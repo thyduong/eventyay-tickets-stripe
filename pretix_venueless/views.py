@@ -81,6 +81,10 @@ class VenuelessSettingsForm(SettingsForm):
         required=False,
         widget=I18nMarkdownTextarea,
     )
+    venueless_talk_schedule_url = forms.URLField(
+        label=_("Eventyay schedule URL"),
+        required=False,
+    )
 
     def __init__(self, *args, **kwargs):
         event = kwargs['obj']
@@ -144,12 +148,14 @@ class OrderPositionJoin(EventViewMixin, OrderPositionDetailMixin, View):
         for a in self.position.answers.filter(question_id__in=request.event.settings.venueless_questions).select_related('question'):
             profile['fields'][a.question.identifier] = a.answer
 
+        uid_token = self.order.customer.identifier if self.order.customer else self.position.pseudonymization_id
+
         payload = {
             "iss": request.event.settings.venueless_issuer,
             "aud": request.event.settings.venueless_audience,
             "exp": exp,
             "iat": iat,
-            "uid": self.position.pseudonymization_id,
+            "uid": uid_token,
             "profile": profile,
             "traits": list(
                 {
@@ -190,7 +196,7 @@ class OrderPositionJoin(EventViewMixin, OrderPositionDetailMixin, View):
 
         baseurl = self.request.event.settings.venueless_url
         if kwargs.get("view_schedule") == 'True':
-            baseurl += '/schedule'
+            return redirect(self.request.event.settings.venueless_talk_schedule_url)
         if '{token}' in baseurl:
             # Hidden feature to support other kinds of installations
             return redirect(baseurl.format(token=token))
