@@ -1,10 +1,8 @@
-# This file is used by the pretix team internally to coordinate releases of this plugin
 [plugin]
-package = "pretix-venueless"
-modules = [ "pretix_venueless" ]
-marketplace_name = "venueless"
+package = "eventyay-stripe"
+modules = [ "eventyay_stripe" ]
+marketplace_name = "stripe"
 pypi = true
 repository_servers = { origin = "github.com" }
 tag_targets = [ "origin" ]
 branch_targets = [ "origin/master" ]
-

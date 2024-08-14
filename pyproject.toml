@@ -1,5 +1,5 @@
 [project]
-name = "pretix-venueless"
+name = "eventyay-stripe"
 dynamic = ["version"]
 description = "Integrates pretix with venueless.org"
 readme = "README.rst"
@@ -14,11 +14,11 @@ maintainers = [
 ]
 
 dependencies = [
-    "PyJWT",
+    'stripe==5.4.*',
 ]
 
 [project.entry-points."pretix.plugin"]
-pretix_venueless = "pretix_venueless:PretixPluginMeta"
+eventyay_stripe = "eventyay_stripe:PretixPluginMeta"
 
 [project.entry-points."distutils.commands"]
 build = "pretix_plugin_build.build:CustomBuild"
@@ -36,8 +36,8 @@ homepage = "https://github.com/pretix/pretix-venueless"
 include-package-data = true
 
 [tool.setuptools.dynamic]
-version = {attr = "pretix_venueless.__version__"}
+version = {attr = "eventyay_stripe.__version__"}
 
 [tool.setuptools.packages.find]
-include = ["pretix*"]
+include = ["eventyay*"]
 namespaces = false
