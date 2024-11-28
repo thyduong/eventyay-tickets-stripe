@@ -10,7 +10,7 @@ from stripe.error import APIConnectionError, CardError
 
 from pretix.base.models import Event, Order, OrderRefund, Organizer
 from pretix.base.payment import PaymentException
-from pretix.plugins.stripe.payment import StripeCC
+from pretix.plugins.stripe.payment import StripeCreditCard
 
 
 @pytest.fixture
@@ -82,7 +82,7 @@ def test_perform_success(env, factory, monkeypatch):
 
     monkeypatch.setattr("stripe.PaymentIntent.create", paymentintent_create)
 
-    prov = StripeCC(event)
+    prov = StripeCreditCard(event)
     req = factory.post('/', {
         'stripe_payment_method_id': 'pm_189fTT2eZvKYlo2CvJKzEzeu',
         'stripe_last4': '4242',
@@ -115,7 +115,7 @@ def test_perform_success_zero_decimal_currency(env, factory, monkeypatch):
         return c
 
     monkeypatch.setattr("stripe.PaymentIntent.create", paymentintent_create)
-    prov = StripeCC(event)
+    prov = StripeCreditCard(event)
     req = factory.post('/', {
         'stripe_payment_method_id': 'pm_189fTT2eZvKYlo2CvJKzEzeu',
         'stripe_last4': '4242',
@@ -140,7 +140,7 @@ def test_perform_card_error(env, factory, monkeypatch):
         raise CardError(message='Foo', param='foo', code=100)
 
     monkeypatch.setattr("stripe.PaymentIntent.create", paymentintent_create)
-    prov = StripeCC(event)
+    prov = StripeCreditCard(event)
     req = factory.post('/', {
         'stripe_payment_method_id': 'pm_189fTT2eZvKYlo2CvJKzEzeu',
         'stripe_last4': '4242',
@@ -166,7 +166,7 @@ def test_perform_stripe_error(env, factory, monkeypatch):
         raise CardError(message='Foo', param='foo', code=100)
 
     monkeypatch.setattr("stripe.PaymentIntent.create", paymentintent_create)
-    prov = StripeCC(event)
+    prov = StripeCreditCard(event)
     req = factory.post('/', {
         'stripe_payment_method_id': 'pm_189fTT2eZvKYlo2CvJKzEzeu',
         'stripe_last4': '4242',
@@ -201,7 +201,7 @@ def test_perform_failed(env, factory, monkeypatch):
         return c
 
     monkeypatch.setattr("stripe.PaymentIntent.create", paymentintent_create)
-    prov = StripeCC(event)
+    prov = StripeCreditCard(event)
     req = factory.post('/', {
         'stripe_payment_method_id': 'pm_189fTT2eZvKYlo2CvJKzEzeu',
         'stripe_last4': '4242',
@@ -240,7 +240,7 @@ def test_refund_success(env, factory, monkeypatch):
         'id': 'ch_123345345'
     }))
     order.save()
-    prov = StripeCC(event)
+    prov = StripeCreditCard(event)
     refund = order.refunds.create(
         provider='stripe_cc', amount=order.total, payment=p,
     )
@@ -267,7 +267,7 @@ def test_refund_unavailable(env, factory, monkeypatch):
         'id': 'ch_123345345'
     }))
     order.save()
-    prov = StripeCC(event)
+    prov = StripeCreditCard(event)
     refund = order.refunds.create(
         provider='stripe_cc', amount=order.total, payment=p
     )

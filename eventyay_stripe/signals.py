@@ -24,16 +24,14 @@ from pretix.presale.signals import html_head, process_response
 @receiver(register_payment_providers, dispatch_uid="payment_stripe")
 def register_payment_provider(sender, **kwargs):
     from .payment import (
-        StripeAffirm, StripeAlipay, StripeBancontact, StripeCC, StripeEPS,
-        StripeGiropay, StripeIdeal, StripeKlarna, StripeMultibanco,
-        StripePayPal, StripePrzelewy24, StripeSEPADirectDebit,
-        StripeSettingsHolder, StripeSofort, StripeSwish, StripeWeChatPay,
+        StripeAlipay, StripeBancontact, StripeCreditCard, StripeEPS,
+        StripeIdeal, StripeMultibanco, StripePrzelewy24, StripeSettingsHolder,
+        StripeSofort, StripeWeChatPay,
     )
 
     return [
-        StripeSettingsHolder, StripeCC, StripeGiropay, StripeIdeal, StripeAlipay, StripeBancontact,
-        StripeSofort, StripeEPS, StripeMultibanco, StripePrzelewy24, StripeWeChatPay,
-        StripeSEPADirectDebit, StripeAffirm, StripeKlarna, StripePayPal, StripeSwish
+        StripeSettingsHolder, StripeCreditCard, StripeIdeal, StripeAlipay, StripeBancontact,
+        StripeSofort, StripeEPS, StripeMultibanco, StripePrzelewy24, StripeWeChatPay
     ]
 
 
@@ -165,38 +163,38 @@ def nav_o(sender, request, organizer, **kwargs):
     return []
 
 
-@receiver(signal=process_response, dispatch_uid="stripe_middleware_resp")
-def signal_process_response(sender, request: HttpRequest, response: HttpResponse, **kwargs):
-    provider = StripeMethod(sender)
-    url = resolve(request.path_info)
+# @receiver(signal=process_response, dispatch_uid="stripe_middleware_resp")
+# def signal_process_response(sender, request: HttpRequest, response: HttpResponse, **kwargs):
+#     provider = StripeMethod(sender)
+#     url = resolve(request.path_info)
 
-    enabled = provider.settings.get('_enabled', as_type=bool)
-    relevant_urls = {
-        "event.order.pay.change",
-        "event.order.pay",
-        "event.checkout",
-        "plugins:eventyay_stripe:sca",
-        "plugins:eventyay_stripe:sca.return"
-    }
+#     enabled = provider.settings.get('_enabled', as_type=bool)
+#     relevant_urls = {
+#         "event.order.pay.change",
+#         "event.order.pay",
+#         "event.checkout",
+#         "plugins:eventyay_stripe:sca",
+#         "plugins:eventyay_stripe:sca.return"
+#     }
 
-    if enabled and (
-        url.url_name in relevant_urls or
-        (url.namespace == "plugins:eventyay_stripe" and url.url_name in ["sca", "sca.return"])
-    ):
-        if 'Content-Security-Policy' in response:
-            csp_header = _parse_csp(response['Content-Security-Policy'])
-        else:
-            csp_header = {}
+#     if enabled and (
+#         url.url_name in relevant_urls or
+#         (url.namespace == "plugins:eventyay_stripe" and url.url_name in ["sca", "sca.return"])
+#     ):
+#         if 'Content-Security-Policy' in response:
+#             csp_header = _parse_csp(response['Content-Security-Policy'])
+#         else:
+#             csp_header = {}
 
-        stripe_csps = {
-            'connect-src': ['https://api.stripe.com'],
-            'frame-src': ['https://js.stripe.com', 'https://hooks.stripe.com'],
-            'script-src': ['https://js.stripe.com'],
-        }
+#         stripe_csps = {
+#             'connect-src': ['https://api.stripe.com'],
+#             'frame-src': ['https://js.stripe.com', 'https://hooks.stripe.com'],
+#             'script-src': ['https://js.stripe.com'],
+#         }
 
-        _merge_csp(csp_header, stripe_csps)
+#         _merge_csp(csp_header, stripe_csps)
 
-        if csp_header:
-            response['Content-Security-Policy'] = _render_csp(csp_header)
+#         if csp_header:
+#             response['Content-Security-Policy'] = _render_csp(csp_header)
 
-    return response
+#     return response
