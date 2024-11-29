@@ -1,9 +1,8 @@
+import hashlib
 import json
 import logging
 import urllib.parse
-import hashlib
 
-import requests
 import stripe
 from django.contrib import messages
 from django.core import signing
@@ -20,24 +19,22 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.views.generic import FormView
 from django_scopes import scopes_disabled
-
 from pretix.base.models import Event, Order, OrderPayment, Organizer, Quota
 from pretix.base.payment import PaymentException
 from pretix.base.services.locking import LockTimeoutException
-from pretix.helpers import OF_SELF
-from pretix.multidomain.urlreverse import build_absolute_uri
 from pretix.base.settings import GlobalSettingsObject
-from pretix.control.permissions import (
-    AdministratorPermissionRequiredMixin, event_permission_required,
-)
+from pretix.control.permissions import (AdministratorPermissionRequiredMixin,
+                                        event_permission_required)
 from pretix.control.views.event import DecoupleMixin
 from pretix.control.views.organizer import OrganizerDetailViewMixin
-from pretix.multidomain.urlreverse import eventreverse
+from pretix.helpers import OF_SELF
+from pretix.helpers.http import redirect_to_url
+from pretix.multidomain.urlreverse import build_absolute_uri, eventreverse
+
 from .forms import OrganizerStripeSettingsForm
 from .models import ReferencedStripeObject
 from .payment import StripeCreditCard, StripeSettingsHolder
-from .tasks import (get_domain_for_event, stripe_verify_domain)
-from pretix.helpers.http import redirect_to_url
+from .tasks import get_domain_for_event, stripe_verify_domain
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +55,10 @@ def redirect_view(request, *args, **kwargs):
         params = request.GET.copy()
         params['go'] = '1'
         r = render(request, 'plugins/stripe/redirect.html', {
-            'url': build_absolute_uri(request.event, 'plugins:eventyay_stripe:redirect') + '?' + urllib.parse.urlencode(params),
+            'url': (
+                build_absolute_uri(request.event, 'plugins:eventyay_stripe:redirect') + '?'
+                + urllib.parse.urlencode(params)
+                ),
         })
         r._csp_ignore = True
         return r
@@ -102,7 +102,7 @@ def oauth_return(request, *args, **kwargs):
                     grant_type='refresh_token',
                     refresh_token=data['refresh_token'],
                     client_secret=gs.settings.payment_stripe_connect_test_secret_key
-                )                
+                )
             except stripe.error.StripeError as e:
                 logger.exception('Failed to obtain OAuth token %s', e)
                 messages.error(request, _('An error occurred during connecting with Stripe, please try again.'))
@@ -113,24 +113,36 @@ def oauth_return(request, *args, **kwargs):
                 }))
 
         if 'error' in data:
-            messages.error(request, _('Stripe returned an error: {}').format(data['error_description']))
+            messages.error(
+                request,
+                _('Stripe returned an error: {}').format(data['error_description'])
+            )
         elif data['livemode'] and 'error' in testdata:
-            messages.error(request, _('Stripe returned an error: {}').format(testdata['error_description']))
+            messages.error(
+                request,
+                _('Stripe returned an error: {}').format(testdata['error_description'])
+            )
         else:
-            messages.success(request,
-                             _('Your Stripe account is now connected to eventyay. You can change the settings in '
-                               'detail below.'))
+            messages.success(
+                request,
+                _('Your Stripe account is now connected to eventyay. '
+                  'You can change the settings in detail below.')
+            )
             event.settings.payment_stripe_publishable_key = data['stripe_publishable_key']
             event.settings.payment_stripe_connect_refresh_token = data['refresh_token']
             event.settings.payment_stripe_connect_user_id = data['stripe_user_id']
             event.settings.payment_stripe_merchant_country = account.get('country')
             # update stripe attributes
-            if (account.get('business_name') or account.get('name') or account.get('email')
-                or account.get('settings', {}).get('dashboard', {}).get('display_name') ):
+            if (
+                account.get('business_name')
+                or account.get('name')
+                or account.get('email')
+                or account.get('settings', {}).get('dashboard', {}).get('display_name')
+            ):
                 event.settings.payment_stripe_connect_user_name = (
                     account.get('business_profile', {}).get('name')
-                    or account.get('business_name') 
-                    or account.get('display_name') 
+                    or account.get('business_name')
+                    or account.get('display_name')
                     or account.get('email')
                     or account.get('settings', {}).get('dashboard', {}).get('display_name')
                 )
@@ -159,7 +171,7 @@ def oauth_return(request, *args, **kwargs):
 def webhook(request, *args, **kwargs):
     event_json = json.loads(request.body.decode('utf-8'))
 
-    # For more about our webhook events check out https://stripe.com/docs/webhooks. 
+    # For more about our webhook events check out https://stripe.com/docs/webhooks.
     # TODO: verify Stripe signature from event
 
     if event_json['data']['object']['object'] == "charge":
@@ -308,10 +320,12 @@ def charge_webhook(event, event_json, charge_id, rso):
                             amount=a,
                             info=str(charge['dispute'])
                         )
-        elif charge['status'] == 'succeeded' and payment.state in (OrderPayment.PAYMENT_STATE_PENDING,
-                                                                   OrderPayment.PAYMENT_STATE_CREATED,
-                                                                   OrderPayment.PAYMENT_STATE_CANCELED,
-                                                                   OrderPayment.PAYMENT_STATE_FAILED):
+        elif charge['status'] == 'succeeded' and payment.state in (
+            OrderPayment.PAYMENT_STATE_PENDING,
+            OrderPayment.PAYMENT_STATE_CREATED,
+            OrderPayment.PAYMENT_STATE_CANCELED,
+            OrderPayment.PAYMENT_STATE_FAILED
+        ):
             try:
                 if getattr(charge, "payment_intent", None):
                     payment.info = str(charge.payment_intent)
@@ -320,7 +334,10 @@ def charge_webhook(event, event_json, charge_id, rso):
                 return HttpResponse("Lock timeout, please try again.", status=503)
             except Quota.QuotaExceededException:
                 pass
-        elif charge['status'] == 'failed' and payment.state in (OrderPayment.PAYMENT_STATE_PENDING, OrderPayment.PAYMENT_STATE_CREATED):
+        elif charge['status'] == 'failed' and payment.state in (
+            OrderPayment.PAYMENT_STATE_PENDING,
+            OrderPayment.PAYMENT_STATE_CREATED
+        ):
             payment.fail(info=str(charge))
 
     return HttpResponse(status=200)
@@ -476,12 +493,12 @@ class StripeOrderView(View):
 
         # Check if the session secret matches the order secret
         if (
-            self.request.session.get('payment_stripe_order_secret') != self.order.secret 
+            self.request.session.get('payment_stripe_order_secret') != self.order.secret
             and not self.payment.provider.startswith('stripe')
         ):
             messages.error(
-                self.request, _('Sorry, there was an error in the payment process. Please check the link '
-                                           'in your emails to continue.')
+                self.request, _('Sorry, there was an error in the payment process. '
+                                'Please check the link in your emails to continue.')
             )
             return redirect(eventreverse(self.request.event, 'presale:event.index'))
 
@@ -586,7 +603,10 @@ class ScaView(StripeOrderView, View):
     def _requires_action(self, intent):
         """Check if the PaymentIntent requires further action."""
         return intent.status == 'requires_action' and intent.next_action.type in [
-            'use_stripe_sdk', 'redirect_to_url', 'alipay_handle_redirect', 'wechat_pay_display_qr_code',
+            'use_stripe_sdk',
+            'redirect_to_url',
+            'alipay_handle_redirect',
+            'wechat_pay_display_qr_code',
             'swish_handle_redirect_or_display_qr_code'
         ]
 
@@ -604,8 +624,9 @@ class ScaView(StripeOrderView, View):
         elif intent.next_action.type in ('use_stripe_sdk', 'alipay_handle_redirect', 'wechat_pay_display_qr_code'):
             ctx['payment_intent_client_secret'] = intent.client_secret
         elif intent.next_action.type == 'multibanco_display_details':
-            ctx['payment_intent_next_action_redirect_url'] = intent.next_action.multibanco_display_details['hosted_voucher_url']
-            ctx['payment_intent_redirect_action_handling'] = 'redirect' #or iframe
+            ctx['payment_intent_next_action_redirect_url'] = (
+                intent.next_action.multibanco_display_details['hosted_voucher_url'])
+            ctx['payment_intent_redirect_action_handling'] = 'redirect'
 
         r = render(request, 'plugins/stripe/sca.html', ctx)
         r._csp_ignore = True

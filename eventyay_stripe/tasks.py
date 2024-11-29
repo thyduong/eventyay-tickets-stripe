@@ -3,10 +3,10 @@ from urllib.parse import urlsplit
 
 import stripe
 from django.conf import settings
-
 from pretix.base.services.tasks import EventTask
 from pretix.celery_app import app
 from pretix.multidomain.urlreverse import get_event_domain
+
 from .models import RegisteredApplePayDomain
 
 logger = logging.getLogger(__name__)

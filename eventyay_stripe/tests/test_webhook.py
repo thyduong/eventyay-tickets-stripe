@@ -5,11 +5,10 @@ from decimal import Decimal
 import pytest
 from django.utils.timezone import now
 from django_scopes import scopes_disabled
+from pretix.base.models import (Event, Order, OrderPayment, OrderRefund,
+                                Organizer, Team, User)
 
-from pretix.base.models import (
-    Event, Order, OrderPayment, OrderRefund, Organizer, Team, User,
-)
-from pretix.plugins.stripe.models import ReferencedStripeObject
+from .models import ReferencedStripeObject
 
 
 @pytest.fixture

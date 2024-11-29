@@ -6,11 +6,11 @@ import pytest
 from django.test import RequestFactory
 from django.utils.timezone import now
 from django_scopes import scope
-from stripe.error import APIConnectionError, CardError
-
 from pretix.base.models import Event, Order, OrderRefund, Organizer
 from pretix.base.payment import PaymentException
-from pretix.plugins.stripe.payment import StripeCreditCard
+from stripe.error import APIConnectionError, CardError
+
+from .payment import StripeCreditCard
 
 
 @pytest.fixture
