@@ -84,36 +84,29 @@ def oauth_return(request, *args, **kwargs):
     testdata = {}
 
     try:
-        resp = requests.post('https://connect.stripe.com/oauth/token', data={
-            'grant_type': 'authorization_code',
-            'client_secret': (
-                gs.settings.payment_stripe_connect_secret_key or gs.settings.payment_stripe_connect_test_secret_key
-            ),
-            'code': request.GET.get('code')
-        })
-        data = resp.json()
-
-        if 'error' not in data:
-            account = stripe.Account.retrieve(
-                data['stripe_user_id'],
-                api_key=gs.settings.payment_stripe_connect_secret_key or gs.settings.payment_stripe_connect_test_secret_key
+        stripe.api_key = (
+            gs.settings.payment_stripe_connect_secret_key
+            or gs.settings.payment_stripe_connect_test_secret_key
             )
-    except:
-        logger.exception('Failed to obtain OAuth token')
+        code = request.GET.get('code')
+        data = stripe.OAuth.token(grant_type="authorization_code", code=code)
+        if 'error' not in data:
+            account = stripe.Account.retrieve(data['stripe_user_id'], api_key=stripe.api_key)
+    except stripe.error.StripeError as e:
+        logger.exception('Failed to obtain OAuth token %s', e)
         messages.error(request, _('An error occurred during connecting with Stripe, please try again.'))
     else:
         if 'error' not in data and data['livemode']:
             try:
-                testresp = requests.post('https://connect.stripe.com/oauth/token', data={
-                    'grant_type': 'refresh_token',
-                    'client_secret': gs.settings.payment_stripe_connect_test_secret_key,
-                    'refresh_token': data['refresh_token']
-                })
-                testdata = testresp.json()
-            except:
-                logger.exception('Failed to obtain OAuth token')
+                testdata = stripe.OAuth.token(
+                    grant_type='refresh_token',
+                    refresh_token=data['refresh_token'],
+                    client_secret=gs.settings.payment_stripe_connect_test_secret_key
+                )                
+            except stripe.error.StripeError as e:
+                logger.exception('Failed to obtain OAuth token %s', e)
                 messages.error(request, _('An error occurred during connecting with Stripe, please try again.'))
-                return redirect_to_url(reverse('control:event.settings.payment.provider', kwargs={
+                return redirect(reverse('control:event.settings.payment.provider', kwargs={
                     'organizer': event.organizer.slug,
                     'event': event.slug,
                     'provider': 'stripe_settings'
@@ -128,21 +121,18 @@ def oauth_return(request, *args, **kwargs):
                              _('Your Stripe account is now connected to eventyay. You can change the settings in '
                                'detail below.'))
             event.settings.payment_stripe_publishable_key = data['stripe_publishable_key']
-            # event.settings.payment_stripe_connect_access_token = data['access_token'] we don't need it, right?
             event.settings.payment_stripe_connect_refresh_token = data['refresh_token']
             event.settings.payment_stripe_connect_user_id = data['stripe_user_id']
             event.settings.payment_stripe_merchant_country = account.get('country')
-            if (
-                account.get('business_name', {}).get('name')
-                or account.get('settings', {}).get('dashboard', {}).get('display_name')
-                or account.get('email')
-                or account.get('display_name')
-            ):
+            # update stripe attributes
+            if (account.get('business_name') or account.get('name') or account.get('email')
+                or account.get('settings', {}).get('dashboard', {}).get('display_name') ):
                 event.settings.payment_stripe_connect_user_name = (
-                    account.get('business_name', {}).get('name')
-                    or account.get('settings', {}).get('dashboard', {}).get('display_name')
+                    account.get('business_profile', {}).get('name')
+                    or account.get('business_name') 
+                    or account.get('display_name') 
                     or account.get('email')
-                    or account.get('display_name')
+                    or account.get('settings', {}).get('dashboard', {}).get('display_name')
                 )
 
             if data['livemode']:
@@ -156,7 +146,7 @@ def oauth_return(request, *args, **kwargs):
 
             stripe_verify_domain.apply_async(args=(event.pk, get_domain_for_event(event)))
 
-    return redirect_to_url(reverse('control:event.settings.payment.provider', kwargs={
+    return redirect(reverse('control:event.settings.payment.provider', kwargs={
         'organizer': event.organizer.slug,
         'event': event.slug,
         'provider': 'stripe_settings'

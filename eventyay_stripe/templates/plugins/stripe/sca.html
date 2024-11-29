@@ -9,10 +9,14 @@
     <script type="text/plain" id="stripe_payment_intent_action_type">{{ payment_intent_action_type }}</script>
     <script type="text/plain" id="stripe_payment_intent_client_secret">{{ payment_intent_client_secret }}</script>
     {% if payment_intent_next_action_redirect_url %}
-        <script type="text/plain" id="stripe_payment_intent_next_action_redirect_url">{{ payment_intent_next_action_redirect_url }}</script>
+        <script type="text/plain" id="stripe_payment_intent_next_action_redirect_url">
+            {{ payment_intent_next_action_redirect_url }}
+        </script>
     {% endif %}
     {% if payment_intent_redirect_action_handling %}
-        <script type="text/plain" id="stripe_payment_intent_redirect_action_handling">{{ payment_intent_redirect_action_handling }}</script>
+        <script type="text/plain" id="stripe_payment_intent_redirect_action_handling">
+            {{ payment_intent_redirect_action_handling }}
+        </script>
     {% endif %}
 {% endblock %}
 {% block content %}
@@ -25,7 +29,6 @@
             </h3>
         </div>
         <div class="stripe-errors sr-only panel-body">
-
         </div>
         <div class="panel-body embed-responsive embed-responsive-sca" id="scacontainer">
 
