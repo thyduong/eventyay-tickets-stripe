@@ -241,15 +241,7 @@ class StripeSettingsHolder(BasePaymentProvider):
                         disabled=self.event.currency
                         not in (
                             "CNY",
-                            "EUR",
-                            "AUD",
-                            "CAD",
-                            "GBP",
-                            "HKD",
-                            "JPY",
-                            "NZD",
                             "SGD",
-                            "USD",
                         ),
                         help_text=_(
                             "Needs to be enabled in your Stripe account first."
