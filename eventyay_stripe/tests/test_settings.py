@@ -1,7 +1,6 @@
 import datetime
 
 import pytest
-
 from pretix.base.models import Event, Organizer, Team, User
 
 valid_secret_key_values = [

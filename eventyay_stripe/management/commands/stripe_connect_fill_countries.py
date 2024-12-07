@@ -1,7 +1,6 @@
 import stripe
 from django.core.management.base import BaseCommand
 from django_scopes import scopes_disabled
-
 from pretix.base.models import Event
 from pretix.base.settings import GlobalSettingsObject
 

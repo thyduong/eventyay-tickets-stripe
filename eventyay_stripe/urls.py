@@ -1,5 +1,4 @@
 from django.urls import include, re_path
-
 from pretix.multidomain import event_url
 
 from .views import (

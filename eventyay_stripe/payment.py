@@ -109,7 +109,7 @@ class StripeSettingsHolder(BasePaymentProvider):
 
     @property
     def settings_form_fields(self):
-        if "pretix_resellers" in [p.module for p in get_all_plugins()]:
+        if 'pretix_resellers' in [p.module for p in get_all_plugins()]:
             moto_settings = [
                 (
                     "reseller_moto",
@@ -124,8 +124,8 @@ class StripeSettingsHolder(BasePaymentProvider):
                                 "We can flag the credit card transaction you make through the reseller interface as "
                                 "MOTO (Mail Order / Telephone Order), which will exempt them from Strong Customer "
                                 "Authentication (SCA) requirements. However: By enabling this feature, you will need to "
-                                "fill out yearly PCI-DSS self-assessment forms like the 40 page SAQ D. Please consult the "
-                                "%s for further information on this subject."
+                                "fill out yearly PCI-DSS self-assessment forms like the 40 page SAQ D. Please "
+                                "consult the %s for further information on this subject."
                                 % '<a href="https://stripe.com/docs/security">{}</a>'.format(
                                     _("Stripe Integration security guide")
                                 )
@@ -349,8 +349,8 @@ class StripeMethod(BasePaymentProvider):
         if is_testmode:
             return mark_safe(
                 _(
-                    "The Stripe plugin is operating in test mode. You can use one of <a {args}>many test "
-                    "cards</a> to perform a transaction. No money will actually be transferred."
+                    'The Stripe plugin is operating in test mode. You can use one of <a {args}>many test '
+                    'cards</a> to perform a transaction. No money will actually be transferred.'
                 ).format(
                     args='href="https://stripe.com/docs/testing#cards" target="_blank"'
                 )
@@ -442,7 +442,7 @@ class StripeMethod(BasePaymentProvider):
     def api_config(self):
         if self.settings.connect_client_id and self.settings.connect_user_id:
             if (
-                self.settings.get("endpoint", "live") == "live"
+                self.settings.get('endpoint', 'live') == 'live'
                 and not self.event.testmode
             ):
                 kwargs = {
@@ -611,14 +611,50 @@ class StripeMethod(BasePaymentProvider):
         return url
 
     def _process_intent(self, request, payment, intent=None):
+        def create_payment_intent(self, payment, payment_method_id, idempotency_key_seed, request, params):
+            return stripe.PaymentIntent.create(
+                amount=self._get_amount(payment),
+                currency=self.event.currency.lower(),
+                payment_method=payment_method_id,
+                payment_method_types=[self.method],
+                confirmation_method=self.confirmation_method,
+                confirm=True,
+                description=f"{self.event.slug.upper()}-{payment.order.code}",
+                metadata={
+                    "order": str(payment.order.id),
+                    "event": self.event.id,
+                    "code": payment.order.code,
+                },
+                idempotency_key=f"{self.event.id}{payment.order.code}{idempotency_key_seed}",
+                return_url=build_absolute_uri(
+                    self.event,
+                    "plugins:eventyay_stripe:sca.return",
+                    kwargs={
+                        "order": payment.order.code,
+                        "payment": payment.pk,
+                        "hash": payment.order.tagged_secret("plugins:eventyay_stripe"),
+                    },
+                ),
+                expand=["latest_charge"],
+                **self._prepare_api_connect_args(payment),
+                **self.api_config,
+                **self._intent_api_args(request, payment),
+                **params,
+            )
+
+        def retrieve_payment_intent(payment_info):
+            if 'id' in payment_info:
+                return stripe.PaymentIntent.retrieve(
+                    payment_info['id'],
+                    expand=["latest_charge"],
+                    **self.api_config
+                )
 
         try:
             if self.payment_is_valid_session(request):
                 method = f"payment_stripe_{self.method}_payment_method_id"
                 payment_method_id = request.session.get(method)
-                idempotency_key_seed = (
-                    payment_method_id if payment_method_id else payment.full_id
-                )
+                idempotency_key_seed = payment_method_id or payment.full_id
                 # create a new payment intent
                 params = {}
 
@@ -630,45 +666,12 @@ class StripeMethod(BasePaymentProvider):
                 if self.is_moto(request, payment):
                     params["payment_method_options"] = {"card": {"moto": True}}
 
-                intent = stripe.PaymentIntent.create(
-                    amount=self._get_amount(payment),
-                    currency=self.event.currency.lower(),
-                    payment_method=payment_method_id,
-                    payment_method_types=[self.method],
-                    confirmation_method=self.confirmation_method,
-                    confirm=True,
-                    description=f"{self.event.slug.upper()}-{payment.order.code}",
-                    metadata={
-                        "order": str(payment.order.id),
-                        "event": self.event.id,
-                        "code": payment.order.code,
-                    },
-                    idempotency_key=f"{self.event.id}{payment.order.code}{idempotency_key_seed}",
-                    return_url=build_absolute_uri(
-                        self.event,
-                        "plugins:eventyay_stripe:sca.return",
-                        kwargs={
-                            "order": payment.order.code,
-                            "payment": payment.pk,
-                            "hash": payment.order.tagged_secret("plugins:eventyay_stripe"),
-                        },
-                    ),
-                    expand=["latest_charge"],
-                    **self._prepare_api_connect_args(payment),
-                    **self.api_config,
-                    **self._intent_api_args(request, payment),
-                    **params,
-                )
+                intent = create_payment_intent(payment, payment_method_id, idempotency_key_seed, request, params)
             else:
                 # get payment intent
                 payment_info = json.loads(payment.info)
-                if not intent:
-                    if "id" in payment_info:
-                        intent = stripe.PaymentIntent.retrieve(
-                            payment_info["id"],
-                            expand=["latest_charge"],
-                            **self.api_config,
-                        )
+                if not intent and "id" in payment_info:
+                    intent = retrieve_payment_intent(payment_info)
         except stripe.error.CardError as e:
             err = e.json_body["error"] if e.json_body else {"message": str(e)}
             logger.exception("Stripe error: %s", err)
@@ -1021,8 +1024,8 @@ class StripeCreditCard(StripeMethod):
 
     def is_moto(self, request, payment=None) -> bool:
         # We don't have a payment yet when checking if we should display the MOTO-flag
-        # However, before we execute the payment, we absolutely have to check if the request-SalesChannel as well as the
-        # order are tagged as a reseller-transaction. Else, a user with a valid reseller-session might be able to place
+        # However, before we execute the payment, we absolutely have to check if the request-SalesChannel as well as
+        # the order are tagged as a reseller-transaction. Else, a user with a valid reseller-session might be able to place
         # a MOTO transaction trough the WebShop.
 
         moto = (
@@ -1100,7 +1103,9 @@ class StripeCreditCard(StripeMethod):
             if err.get('code') != 'idempotency_key_in_use':
                 payment.fail(info={'error': True, 'message': err['message']})
             raise PaymentException(
-                _('We had trouble communicating with Stripe. Please try again and get in touch with us if this problem persists.')) from e
+                _('We had trouble communicating with Stripe. '
+                  'Please try again and get in touch with us if this problem persists.')
+                  ) from e
 
         else:
             ReferencedStripeObject.objects.get_or_create(reference=intent.id,
@@ -1174,14 +1179,15 @@ class StripeCreditCard(StripeMethod):
     def payment_presale_render(self, payment: OrderPayment) -> str:
         pi = payment.info_data or {}
         try:
-            if "latest_charge" in pi and isinstance(pi.get("latest_charge"), str):
-                latest_charge = stripe.Charge.retrieve(
-                    pi.get("latest_charge"), **self.api_config
-                )
-                card = latest_charge["payment_method_details"]["card"]
-            elif "latest_charge" in pi and isinstance(pi.get("latest_charge"), dict):
-                card = pi.get(
-                    "latest_charge", {}).get("payment_method_details", {}).get("card")
+            if "latest_charge" in pi:
+                latest_charge = pi.get("latest_charge")
+                if isinstance(latest_charge, str):
+                    latest_charge = stripe.Charge.retrieve(latest_charge, **self.api_config)
+                    card = latest_charge["payment_method_details"]["card"]
+                elif isinstance(latest_charge, dict):
+                    card = latest_charge.get("payment_method_details", {}).get("card")
+                else:
+                    raise TypeError("'latest_charge' must be either a string or a dictionary.")
             else:
                 if "source" not in pi:
                     raise KeyError("Missing 'source' attribute in payment info data.")
@@ -1468,10 +1474,7 @@ class StripeEPS(Redirector):
                 bank = pi.get("source", {}).get("eps", {}).get("bank", "")
             else:
                 bank = ""
-            if bank is None:
-                bank = ""
-            else:
-                bank = bank.replace("_", " ").title()
+            bank = "" if bank is None else bank.replace("_", " ").title()
 
             return gettext(f"Bank account at {bank}")
         except KeyError as e:

@@ -132,7 +132,6 @@ def oauth_return(request, *args, **kwargs):
             event.settings.payment_stripe_connect_refresh_token = data['refresh_token']
             event.settings.payment_stripe_connect_user_id = data['stripe_user_id']
             event.settings.payment_stripe_merchant_country = account.get('country')
-            # update stripe attributes
             if (
                 account.get('business_name')
                 or account.get('name')
@@ -169,10 +168,30 @@ def oauth_return(request, *args, **kwargs):
 @require_POST
 @scopes_disabled()
 def webhook(request, *args, **kwargs):
-    event_json = json.loads(request.body.decode('utf-8'))
+    # Refer: https://stripe.com/docs/webhooks
+    payload = request.body
+    event_json = json.loads(payload.decode('utf-8'))
 
-    # For more about our webhook events check out https://stripe.com/docs/webhooks.
-    # TODO: verify Stripe signature from event
+    try:
+        sig_header = request.META.get("HTTP_STRIPE_SIGNATURE")
+        gs = GlobalSettingsObject()
+        stripe.api_key = (
+            gs.settings.payment_stripe_connect_secret_key
+            or gs.settings.payment_stripe_connect_test_secret_key
+            )
+        webhook_secret_key = gs.settings.payment_stripe_webhook_secret
+        # Verify the event with the Stripe library
+        stripe.Webhook.construct_event(
+            payload, sig_header, webhook_secret_key
+        )
+    except ValueError as e:
+        # Invalid payload
+        logger.exception('Stripe error on webhook: %s', e)
+        return HttpResponse(status=400)
+    except stripe.error.SignatureVerificationError as e:
+        # Invalid signature
+        logger.exception('Stripe error on webhook: %s', e)
+        return HttpResponse(status=400)
 
     if event_json['data']['object']['object'] == "charge":
         func = charge_webhook
@@ -404,7 +423,10 @@ def source_webhook(event, event_json, source_id, rso):
                 logger.exception('Webhook error')
         elif src.status == 'failed':
             payment.fail(info=str(src))
-        elif src.status == 'canceled' and payment.state in (OrderPayment.PAYMENT_STATE_PENDING, OrderPayment.PAYMENT_STATE_CREATED):
+        elif src.status == 'canceled' and payment.state in (
+            OrderPayment.PAYMENT_STATE_PENDING,
+            OrderPayment.PAYMENT_STATE_CREATED
+        ):
             payment.info = str(src)
             payment.state = OrderPayment.PAYMENT_STATE_CANCELED
             payment.save()
@@ -457,11 +479,6 @@ def oauth_disconnect(request, **kwargs):
 
 class StripeOrderView(View):
     def dispatch(self, request, *args, **kwargs):
-        """
-        Overwrite dispatch method
-        Retrieve the order with a secret check
-        Retrieve the payment object
-        """
         try:
             self.order = request.event.orders.get_with_secret_check(
                 code=kwargs['order'], received_secret=kwargs['hash'].lower(), tag='plugins:eventyay_stripe'

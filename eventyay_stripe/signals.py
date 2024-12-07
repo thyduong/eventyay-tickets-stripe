@@ -3,21 +3,17 @@ from collections import OrderedDict
 
 from django import forms
 from django.dispatch import receiver
-from django.http import HttpRequest
 from django.template.loader import get_template
 from django.urls import resolve, reverse
 from django.utils.translation import gettext_lazy as _
-from paypalhttp import HttpResponse
 from pretix.base.forms import SecretKeySettingsField
-from pretix.base.middleware import _merge_csp, _parse_csp, _render_csp
 from pretix.base.settings import settings_hierarkey
 from pretix.base.signals import (logentry_display, register_global_settings,
                                  register_payment_providers)
 from pretix.control.signals import nav_organizer
-from pretix.presale.signals import html_head, process_response
+from pretix.presale.signals import html_head
 
 from .forms import StripeKeyValidator
-from .payment import StripeMethod
 
 
 @receiver(register_payment_providers, dispatch_uid="payment_stripe")
@@ -106,6 +102,13 @@ def register_global_settings(sender, **kwargs):
             required=False,
             validators=(
                 StripeKeyValidator(['sk_live_', 'rk_live_']),
+            ),
+        )),
+        ('payment_stripe_webhook_secret', SecretKeySettingsField(
+            label=_('Stripe Connect: Webhook Endpoint Secret'),
+            required=False,
+            validators=(
+                StripeKeyValidator(['whsec_']),
             ),
         )),
         ('payment_stripe_connect_publishable_key', forms.CharField(

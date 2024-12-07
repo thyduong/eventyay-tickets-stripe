@@ -20,8 +20,7 @@ var stripeObj = {
                 $(".stripe-errors").html("<div class='alert alert-danger'>" + result.error.message + "</div>");
                 $(".stripe-errors").slideDown();
             } else {
-                var $form = $("#stripe_payment_method_id").closest("form");
-                // var $form = $("#stripe_" + method + "_payment_method_id").closest("form");
+                let $form = $("#stripe_payment_method_id").closest("form");
                 // Insert the token into the form so it gets submitted to the server
                 $("#stripe_payment_method_id").val(result.paymentMethod.id);
                 $("#stripe_card_brand").val(result.paymentMethod.card.brand);
@@ -71,7 +70,7 @@ var stripeObj = {
                             stripeObj.paymentRequest.on('paymentmethod', function (ev) {
                                 ev.complete('success');
 
-                                var $form = $("#stripe_payment_method_id").closest("form");
+                                let $form = $("#stripe_payment_method_id").closest("form");
                                 // Insert the token into the form so it gets submitted to the server
                                 $("#stripe_payment_method_id").val(ev.paymentMethod.id);
                                 $("#stripe_card_brand").val(ev.paymentMethod.card.brand);
