@@ -158,19 +158,24 @@ var stripeObj = {
     },
     'confirmCardiFrame': function (payment_intent_next_action_redirect_url) {
         waitingDialog.show(gettext("Contacting your bank …"));
-        let iframe = document.createElement('iframe');
-        iframe.src = payment_intent_next_action_redirect_url;
-        iframe.className = 'embed-responsive-item';
-        $('#scacontainer').append(iframe);
-        $('#scacontainer iframe').load(function () {
-            waitingDialog.hide();
-        });
+        if (!isLiveMode()) {
+            let iframe = document.createElement('iframe');
+            iframe.src = payment_intent_next_action_redirect_url;
+            iframe.className = 'embed-responsive-item';
+            $('#scacontainer').append(iframe);
+            $('#scacontainer iframe').load(function () {
+                waitingDialog.hide();
+            });
+        } else {
+            // Redirect in live mode
+            window.location.href = payment_intent_next_action_redirect_url;
+        }
     },
     'redirectToPayment': function (payment_intent_next_action_redirect_url) {
         waitingDialog.show(gettext("Contacting your bank …"));
 
         let payment_intent_redirect_action_handling = $.trim($("#stripe_payment_intent_redirect_action_handling").html());
-        if (payment_intent_redirect_action_handling === 'iframe') {
+        if (payment_intent_redirect_action_handling === 'iframe' && !isLiveMode()) {
             let iframe = document.createElement('iframe');
             iframe.src = payment_intent_next_action_redirect_url;
             iframe.className = 'embed-responsive-item';
@@ -316,3 +321,6 @@ $(function () {
         }
     );
 });
+function isLiveMode() {
+    return window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+}

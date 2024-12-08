@@ -611,7 +611,7 @@ class StripeMethod(BasePaymentProvider):
         return url
 
     def _process_intent(self, request, payment, intent=None):
-        def create_payment_intent(self, payment, payment_method_id, idempotency_key_seed, request, params):
+        def create_payment_intent(payment, payment_method_id, idempotency_key_seed, request, params):
             return stripe.PaymentIntent.create(
                 amount=self._get_amount(payment),
                 currency=self.event.currency.lower(),
