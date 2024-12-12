@@ -6,10 +6,12 @@ from django.dispatch import receiver
 from django.template.loader import get_template
 from django.urls import resolve, reverse
 from django.utils.translation import gettext_lazy as _
+
 from pretix.base.forms import SecretKeySettingsField
 from pretix.base.settings import settings_hierarkey
-from pretix.base.signals import (logentry_display, register_global_settings,
-                                 register_payment_providers)
+from pretix.base.signals import (
+    logentry_display, register_global_settings, register_payment_providers,
+)
 from pretix.control.signals import nav_organizer
 from pretix.presale.signals import html_head
 
@@ -18,10 +20,11 @@ from .forms import StripeKeyValidator
 
 @receiver(register_payment_providers, dispatch_uid="payment_stripe")
 def register_payment_provider(sender, **kwargs):
-    from .payment import (StripeAlipay, StripeBancontact, StripeCreditCard,
-                          StripeEPS, StripeIdeal, StripeMultibanco,
-                          StripePrzelewy24, StripeSettingsHolder, StripeSofort,
-                          StripeWeChatPay)
+    from .payment import (
+        StripeAlipay, StripeBancontact, StripeCreditCard, StripeEPS,
+        StripeIdeal, StripeMultibanco, StripePrzelewy24, StripeSettingsHolder,
+        StripeSofort, StripeWeChatPay,
+    )
 
     return [
         StripeSettingsHolder, StripeCreditCard, StripeIdeal, StripeAlipay, StripeBancontact,

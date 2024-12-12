@@ -1,16 +1,11 @@
 from django.urls import include, re_path
+
 from pretix.multidomain import event_url
 
 from .views import (
-    OrganizerSettingsFormView,
-    ReturnView,
-    ScaReturnView,
-    ScaView,
-    oauth_disconnect,
-    oauth_return,
-    redirect_view,
-    webhook
-    )
+    OrganizerSettingsFormView, ReturnView, ScaReturnView, ScaView,
+    oauth_disconnect, oauth_return, redirect_view, webhook,
+)
 
 event_patterns = [
     re_path(r'^stripe/', include([
