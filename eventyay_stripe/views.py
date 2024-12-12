@@ -19,12 +19,14 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.views.generic import FormView
 from django_scopes import scopes_disabled
+
 from pretix.base.models import Event, Order, OrderPayment, Organizer, Quota
 from pretix.base.payment import PaymentException
 from pretix.base.services.locking import LockTimeoutException
 from pretix.base.settings import GlobalSettingsObject
-from pretix.control.permissions import (AdministratorPermissionRequiredMixin,
-                                        event_permission_required)
+from pretix.control.permissions import (
+    AdministratorPermissionRequiredMixin, event_permission_required,
+)
 from pretix.control.views.event import DecoupleMixin
 from pretix.control.views.organizer import OrganizerDetailViewMixin
 from pretix.helpers import OF_SELF
@@ -58,7 +60,7 @@ def redirect_view(request, *args, **kwargs):
             'url': (
                 build_absolute_uri(request.event, 'plugins:eventyay_stripe:redirect') + '?'
                 + urllib.parse.urlencode(params)
-                ),
+            ),
         })
         r._csp_ignore = True
         return r
@@ -87,7 +89,7 @@ def oauth_return(request, *args, **kwargs):
         stripe.api_key = (
             gs.settings.payment_stripe_connect_secret_key
             or gs.settings.payment_stripe_connect_test_secret_key
-            )
+        )
         code = request.GET.get('code')
         data = stripe.OAuth.token(grant_type="authorization_code", code=code)
         if 'error' not in data:
@@ -178,7 +180,7 @@ def webhook(request, *args, **kwargs):
         stripe.api_key = (
             gs.settings.payment_stripe_connect_secret_key
             or gs.settings.payment_stripe_connect_test_secret_key
-            )
+        )
         webhook_secret_key = gs.settings.payment_stripe_webhook_secret
         # Verify the event with the Stripe library
         stripe.Webhook.construct_event(
@@ -187,30 +189,28 @@ def webhook(request, *args, **kwargs):
     except ValueError as e:
         # Invalid payload
         logger.exception('Stripe error on webhook: %s', e)
-        return HttpResponse(status=400)
+        return HttpResponse("Invalid payload", status=400)
     except stripe.error.SignatureVerificationError as e:
         # Invalid signature
         logger.exception('Stripe error on webhook: %s', e)
-        return HttpResponse(status=400)
+        return HttpResponse("Invalid Stripe signature", status=400)
 
-    if event_json['data']['object']['object'] == "charge":
+    obj = event_json['data']['object']
+    if (obj_type := obj['object']) == "charge":
         func = charge_webhook
-        objid = event_json['data']['object']['id']
-        lookup_ids = [
-            objid,
-            (event_json['data']['object'].get('source') or {}).get('id')
-        ]
-    elif event_json['data']['object']['object'] == "dispute":
+        objid = obj['id']
+        lookup_ids = [objid, (obj.get('source') or {}).get('id')]
+    elif obj_type == "dispute":
         func = charge_webhook
-        objid = event_json['data']['object']['charge']
+        objid = obj['charge']
         lookup_ids = [objid]
-    elif event_json['data']['object']['object'] == "source":
+    elif obj_type == "source":
         func = source_webhook
-        objid = event_json['data']['object']['id']
+        objid = obj['id']
         lookup_ids = [objid]
-    elif event_json['data']['object']['object'] == "payment_intent":
+    elif obj_type == "payment_intent":
         func = paymentintent_webhook
-        objid = event_json['data']['object']['id']
+        objid = obj['id']
         lookup_ids = [objid]
     else:
         return HttpResponse("Not interested in this data type", status=200)
@@ -221,7 +221,7 @@ def webhook(request, *args, **kwargs):
     if rso:
         return func(rso.order.event, event_json, objid, rso)
     else:
-        if event_json['data']['object']['object'] == "charge" and 'payment_intent' in event_json['data']['object']:
+        if obj_type == "charge" and 'payment_intent' in obj:
             # If we receive a charge webhook *before* the payment intent webhook, we don't know the charge ID yet
             # and can't match it -- but we know the payment intent ID!
             try:
@@ -236,10 +236,10 @@ def webhook(request, *args, **kwargs):
             # payment intents or charges connected with payment intents since they didn't exist back then. Our best
             # hope is to go for request.event and see if we can find the order ID.
             return func(request.event, event_json, objid, None)
-        else:
-            # Okay, this is probably not an event that concerns us, maybe other applications talk to the same stripe
-            # account
-            return HttpResponse("Unable to detect event", status=200)
+
+        # Okay, this is probably not an event that concerns us, maybe other applications talk to the same stripe
+        # account
+        return HttpResponse("Unable to detect event", status=200)
 
 
 SOURCE_TYPES = {
@@ -247,7 +247,6 @@ SOURCE_TYPES = {
     'three_d_secure': 'stripe',
     'card': 'stripe',
     'sepa_debit': 'stripe_sepa_debit',
-    'giropay': 'stripe_giropay',
     'ideal': 'stripe_ideal',
     'alipay': 'stripe_alipay',
     'bancontact': 'stripe_bancontact',
@@ -300,7 +299,9 @@ def charge_webhook(event, event_json, charge_id, rso):
         if not payment:
             payment = order.payments.create(
                 state=OrderPayment.PAYMENT_STATE_CREATED,
-                provider=SOURCE_TYPES.get(charge['source'].get('type', charge['source'].get('object', 'card')), 'stripe'),
+                provider=(SOURCE_TYPES.get(
+                    charge['source'].get('type', charge['source'].get('object', 'card')), 'stripe'
+                )),
                 amount=prov._amount_to_decimal(charge['amount']),
                 info=str(charge),
             )
@@ -483,20 +484,16 @@ class StripeOrderView(View):
             self.order = request.event.orders.get_with_secret_check(
                 code=kwargs['order'], received_secret=kwargs['hash'].lower(), tag='plugins:eventyay_stripe'
             )
-        except Order.DoesNotExist:
+        except Order.DoesNotExist as e:
             try:
                 # try retrieving order with hash (old method)
                 self.order = request.event.orders.get(code=kwargs['order'])
                 if hashlib.sha1(self.order.secret.lower().encode()).hexdigest() != kwargs['hash'].lower():
-                    raise Http404('Unknown order')
-            except Order.DoesNotExist:
-                raise Http404('Unknown order')
+                    raise Http404('Unknown order') from e
+            except Order.DoesNotExist as exc:
+                raise Http404('Unknown order') from exc
 
-        self.payment = get_object_or_404(
-            self.order.payments,
-            pk=kwargs['payment'],
-            provider__startswith='stripe'
-        )
+        self.payment = get_object_or_404(self.order.payments, pk=kwargs['payment'], provider__startswith='stripe')
 
         return super().dispatch(request, *args, **kwargs)
 
@@ -505,9 +502,7 @@ class StripeOrderView(View):
         # Return the payment provider object
         return self.request.event.get_payment_providers()[self.payment.provider]
 
-    def _navigate_to_purchase(self):
-        """Check and Redirect to order page with status"""
-
+    def _redirect_to_order(self):
         # Check if the session secret matches the order secret
         if (
             self.request.session.get('payment_stripe_order_secret') != self.order.secret
@@ -550,14 +545,14 @@ class ReturnView(StripeOrderView, View):
             if self.payment.state == OrderPayment.PAYMENT_STATE_CONFIRMED:
                 if 'payment_stripe_token' in request.session:
                     del request.session['payment_stripe_token']
-                return self._navigate_to_purchase()
+                return self._redirect_to_order()
 
             if src.status == 'chargeable':
                 try:
                     prov._charge_source(request, src.id, self.payment)
                 except PaymentException as e:
                     messages.error(request, str(e))
-                    return self._navigate_to_purchase()
+                    return self._redirect_to_order()
                 finally:
                     if 'payment_stripe_token' in request.session:
                         del request.session['payment_stripe_token']
@@ -565,7 +560,7 @@ class ReturnView(StripeOrderView, View):
                 # Webhook was faster, wow! ;)
                 if 'payment_stripe_token' in request.session:
                     del request.session['payment_stripe_token']
-                return self._navigate_to_purchase()
+                return self._redirect_to_order()
             elif src.status == 'pending':
                 self.payment.state = OrderPayment.PAYMENT_STATE_PENDING
                 self.payment.info = str(src)
@@ -574,12 +569,11 @@ class ReturnView(StripeOrderView, View):
                 self.payment.fail(info=str(src))
                 messages.error(self.request, _('We had trouble authorizing your card payment. Please try again and '
                                                'get in touch with us if this problem persists.'))
-        return self._navigate_to_purchase()
+        return self._redirect_to_order()
 
 
 @method_decorator(xframe_options_exempt, 'dispatch')
 class ScaView(StripeOrderView, View):
-
     def get(self, request, *args, **kwargs):
         prov = self.pprov
         prov._init_api()
@@ -588,23 +582,22 @@ class ScaView(StripeOrderView, View):
         if self.payment.state in (OrderPayment.PAYMENT_STATE_CONFIRMED,
                                   OrderPayment.PAYMENT_STATE_CANCELED,
                                   OrderPayment.PAYMENT_STATE_FAILED):
-            return self._navigate_to_purchase()
-
-        payment_info = json.loads(self.payment.info)
+            return self._redirect_to_order()
 
         # Retrieve the PaymentIntent
-        intent = self._retrieve_payment_intent(prov, payment_info)
+        payment_info = json.loads(self.payment.info)
+        intent = self._get_payment_intent(prov, payment_info)
         if not intent:
             messages.error(self.request, _('Sorry, there was an error in the payment process.'))
-            return self._navigate_to_purchase()
+            return self._redirect_to_order()
 
         # Handle PaymentIntent next actions
-        if self._requires_action(intent):
-            return self._render_sca_template(request, prov, intent)
+        if self._needs_additional_action(intent):
+            return self._handle_additional_action(request, prov, intent)
         else:
-            return self._process_intent(request, prov, intent)
+            return self._complete_payment(request, prov, intent)
 
-    def _retrieve_payment_intent(self, prov, payment_info):
+    def _get_payment_intent(self, prov, payment_info):
         """Retrieve the PaymentIntent from Stripe."""
         if 'id' in payment_info:
             try:
@@ -617,7 +610,7 @@ class ScaView(StripeOrderView, View):
                 logger.exception('Could not retrieve payment intent')
         return None
 
-    def _requires_action(self, intent):
+    def _needs_additional_action(self, intent):
         """Check if the PaymentIntent requires further action."""
         return intent.status == 'requires_action' and intent.next_action.type in [
             'use_stripe_sdk',
@@ -627,7 +620,7 @@ class ScaView(StripeOrderView, View):
             'swish_handle_redirect_or_display_qr_code'
         ]
 
-    def _render_sca_template(self, request, prov, intent):
+    def _handle_additional_action(self, request, prov, intent):
         """Render the SCA template with appropriate context."""
         ctx = {
             'order': self.order,
@@ -649,14 +642,13 @@ class ScaView(StripeOrderView, View):
         r._csp_ignore = True
         return r
 
-    def _process_intent(self, request, prov, intent):
-        """Handle the PaymentIntent and redirect to the order."""
+    def _complete_payment(self, request, prov, intent):
         try:
-            prov._process_intent(request, self.payment, intent)
+            prov._handle_intent_response(request, self.payment, intent)
         except PaymentException as e:
             messages.error(request, str(e))
 
-        return self._navigate_to_purchase()
+        return self._redirect_to_order()
 
 
 @method_decorator(xframe_options_exempt, 'dispatch')
@@ -665,7 +657,7 @@ class ScaReturnView(StripeOrderView, View):
         prov = self.pprov
 
         try:
-            prov._process_intent(request, self.payment)
+            prov._handle_intent_response(request, self.payment)
         except PaymentException as e:
             messages.error(request, str(e))
 
@@ -682,7 +674,12 @@ class ScaReturnView(StripeOrderView, View):
         return render(request, 'plugins/stripe/sca_return.html', ctx)
 
 
-class OrganizerSettingsFormView(DecoupleMixin, OrganizerDetailViewMixin, AdministratorPermissionRequiredMixin, FormView):
+class OrganizerSettingsFormView(
+    DecoupleMixin,
+    OrganizerDetailViewMixin,
+    AdministratorPermissionRequiredMixin,
+    FormView
+):
     model = Organizer
     permission = 'can_change_organizer_settings'
     form_class = OrganizerStripeSettingsForm
