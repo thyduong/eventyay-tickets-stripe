@@ -83,27 +83,27 @@ class StripeSettingsHolder(BasePaymentProvider):
                     self.get_connect_url(request),
                     _("Connect with Stripe"),
                 )
-            else:
-                return (
-                    "<button formaction='{}' class='btn btn-danger'>{}</button>"
-                ).format(
-                    reverse(
-                        "plugins:eventyay_stripe:oauth.disconnect",
-                        kwargs={
-                            "organizer": self.event.organizer.slug,
-                            "event": self.event.slug,
-                        },
-                    ),
-                    _("Disconnect from Stripe"),
-                )
-        else:
-            return "<div class='alert alert-info'>%s<br /><code>%s</code></div>" % (
-                _(
-                    'Please configure a <a href="https://dashboard.stripe.com/account/webhooks">Stripe Webhook</a> to '
-                    'the following endpoint in order to automatically cancel orders when charges are refunded '
-                    'externally and to process asynchronous payment methods like SOFORT.'
+            return (
+                "<button formaction='{}' class='btn btn-danger'>{}</button>"
+            ).format(
+                reverse(
+                    "plugins:eventyay_stripe:oauth.disconnect",
+                    kwargs={
+                        "organizer": self.event.organizer.slug,
+                        "event": self.event.slug,
+                    },
                 ),
-                build_global_uri("plugins:eventyay_stripe:webhook"),
+                _("Disconnect from Stripe"),
+            )
+        else:
+            message = _(
+                'Please configure a %(link) to '
+                'the following endpoint in order to automatically cancel orders when charges are refunded '
+                'externally and to process asynchronous payment methods like SOFORT.'
+            ) % {'link': '<a href="https://dashboard.stripe.com/account/webhooks">Stripe Webhook</a>'}
+            return "<div class='alert alert-info'>{}<br /><code>{}</code></div>".format(
+                message,
+                build_global_uri("plugins:eventyay_stripe:webhook")
             )
 
     @property
@@ -953,7 +953,7 @@ class StripeMethod(BasePaymentProvider):
             ) from e
         except stripe.error.StripeError as err:
             logger.error("Stripe error: %s", str(err))
-            raise PaymentException(_("Stripe returned an error"))
+            raise PaymentException(_("Stripe returned an error")) from err
         else:
             refund.info = str(r)
             if r.status in ("succeeded", "pending"):
@@ -1023,13 +1023,10 @@ class StripeCreditCard(StripeMethod):
         return template.render(ctx)
 
     def payment_is_valid_session(self, request):
-        if (
-            request.session.get("payment_stripe_payment_method_id", "") != ""
-            or
-            request.session.get("payment_stripe_card_payment_method_id", "") != ""
-        ):
-            return True
-        return False
+        return bool(
+            request.session.get("payment_stripe_payment_method_id") or
+            request.session.get("payment_stripe_card_payment_method_id")
+        )
 
     def checkout_prepare(self, request, cart):
         if "payment_stripe_brand" in request.session:
@@ -1066,10 +1063,7 @@ class StripeCreditCard(StripeMethod):
             and request.sales_channel.identifier == "resellers"
         )
 
-        if payment:
-            return moto and payment.order.sales_channel == "resellers"
-
-        return moto
+        return moto and payment.order.sales_channel == "resellers" if payment else moto
 
     def _handle_intent_response(self, request, payment, intent=None):
         try:
@@ -1147,12 +1141,8 @@ class StripeCreditCard(StripeMethod):
 
             self._handle_intent_response(request, payment)
         except stripe.error.CardError as e:
-            if e.json_body:
-                err = e.json_body["error"]
-                logger.exception('Stripe error: %s', err)
-            else:
-                err = {"message": str(e)}
-                logger.exception('Stripe error: %s', err)
+            err = e.json_body["error"] if e.json_body else {"message": str(e)}
+            logger.exception('Stripe error: %s', err)
             logger.info('Stripe card error: %s', err)
             payment.fail(
                 info={

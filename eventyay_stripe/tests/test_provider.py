@@ -10,7 +10,7 @@ from pretix.base.models import Event, Order, OrderRefund, Organizer
 from pretix.base.payment import PaymentException
 from stripe.error import APIConnectionError, CardError
 
-from .payment import StripeCreditCard
+from eventyay_stripe.payment import StripeCreditCard
 
 
 @pytest.fixture
