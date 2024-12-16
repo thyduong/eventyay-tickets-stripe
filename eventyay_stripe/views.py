@@ -171,10 +171,12 @@ def oauth_return(request, *args, **kwargs):
 @scopes_disabled()
 def webhook(request, *args, **kwargs):
     # Refer: https://stripe.com/docs/webhooks
-    payload = request.body
-    event_json = json.loads(payload.decode('utf-8'))
-
     try:
+        payload = request.body
+        if not payload:
+            logger.exception('Empty payload on webhook')
+            return HttpResponse("Empty payload", status=400)
+        event_json = json.loads(payload.decode('utf-8'))
         sig_header = request.META.get("HTTP_STRIPE_SIGNATURE")
         gs = GlobalSettingsObject()
         stripe.api_key = (
@@ -182,13 +184,19 @@ def webhook(request, *args, **kwargs):
             or gs.settings.payment_stripe_connect_test_secret_key
         )
         webhook_secret_key = gs.settings.payment_stripe_webhook_secret
+        if webhook_secret_key is None:
+            logger.exception('Webhook secret not provided')
+            return HttpResponse("Need Webhook Secret", status=400)
         # Verify the event with the Stripe library
         stripe.Webhook.construct_event(
             payload, sig_header, webhook_secret_key
         )
-    except ValueError as e:
+    except AttributeError as e:
+        logger.exception('Attribute Error on webhook: %s', e)
+        return HttpResponse("Cannot verify Stripe signature", status=400)
+    except (json.decoder.JSONDecodeError, ValueError) as e:
         # Invalid payload
-        logger.exception('Stripe error on webhook: %s', e)
+        logger.exception('Invalid payload on webhook: %s', e)
         return HttpResponse("Invalid payload", status=400)
     except stripe.error.SignatureVerificationError as e:
         # Invalid signature
